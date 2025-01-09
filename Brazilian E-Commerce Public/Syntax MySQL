@@ -1,0 +1,163 @@
+CREATE DATABASE brazilian;
+USE brazilian;
+
+-- Create and Insert Table using Table Data Import Wizard Menu from MySQL Workbench.
+
+
+-- 1. COUNT THE NUMBER OF ORDERS PER YEAR AND MONTH.
+
+-- olist_orders_dataset table, named orders
+-- olist_order_items_dataset table, named order_items
+
+-- Number of orders per year
+SELECT
+	 YEAR(orders.order_purchase_timestamp) AS order_year,
+     SUM(order_items.order_item_id) AS number_order
+FROM orders
+     INNER JOIN order_items ON orders.order_id = order_items.order_id
+     GROUP BY order_year
+     ORDER BY order_year;
+
+-- Number of orders per month
+SELECT
+	 YEAR(orders.order_purchase_timestamp) AS order_year,
+     MONTH(orders.order_purchase_timestamp) AS order_month,
+     SUM(order_items.order_item_id) AS number_order
+FROM orders
+	 INNER JOIN order_items ON orders.order_id = order_items.order_id
+     GROUP BY order_year, order_month
+     ORDER BY order_year, order_month;
+
+
+-- 2. TOTAL REVENUE PER YEAR AND MONTH.
+
+-- olist_orders_dataset table, named orders
+-- olist_order_items_dataset table, named order_items
+
+-- Total revenue per year
+SELECT
+	 YEAR(orders.order_purchase_timestamp) AS order_year,
+     SUM(order_items.order_item_id*order_items.price) AS total_revenue
+FROM orders
+     INNER JOIN order_items ON orders.order_id = order_items.order_id
+     GROUP BY order_year
+     ORDER BY order_year;
+
+-- Total revenue per month
+SELECT
+	 YEAR(orders.order_purchase_timestamp) AS order_year,
+     MONTH(orders.order_purchase_timestamp) AS order_month,
+     SUM(order_items.order_item_id*order_items.price) AS total_revenue
+FROM orders
+	 INNER JOIN order_items ON orders.order_id = order_items.order_id
+     GROUP BY order_year, order_month
+     ORDER BY order_year, order_month;
+
+
+-- 3. GET TOP 20 PRODUCT CATEGORIES BASED ON TOTAL REVENUE AND TOTAL ORDER (ONLY FOR DELIVERED ORDERS).
+
+-- olist_orders_dataset, named orders
+-- olist_order_items_dataset table, named order_items
+-- olist_products_dataset, named products
+-- product_category_name_translation, named product_category
+
+SELECT
+	product_category.product_category_name_english AS product_name,
+	SUM(order_items.price*order_items.order_item_id) AS total_revenue,
+    SUM(order_items.order_item_id) AS total_order
+FROM orders
+	INNER JOIN order_items ON orders.order_id = order_items.order_id
+    INNER JOIN products ON order_items.product_id = products.product_id
+    INNER JOIN product_category ON products.product_category_name = product_category.product_category_name
+    WHERE orders.order_status = 'delivered'
+    GROUP BY product_name
+    ORDER BY total_revenue DESC
+    LIMIT 20;
+
+
+-- 4. FIND THE NUMBER OF ORDERS WHICH ARE DELIVERED LATE FROM THE ESTIMATED TIME PER YEAR AND MONTH.
+
+-- olist_order_items_dataset table, named order_items
+-- olist_orders_dataset table, named orders
+
+-- Number of orders per year
+SELECT
+	 YEAR(orders.order_delivered_customer_date) AS delivered_year,
+     SUM(order_items.order_item_id) AS number_order
+FROM orders
+     INNER JOIN order_items ON orders.order_id = order_items.order_id
+     WHERE DATEDIFF(orders.order_estimated_delivery_date,orders.order_delivered_customer_date) < 0
+     GROUP BY delivered_year
+     ORDER BY delivered_year;
+
+-- Number of orders per month
+SELECT
+	 YEAR(orders.order_delivered_customer_date) AS delivered_year,
+     MONTH(orders.order_delivered_customer_date) AS delivered_month,
+     SUM(order_items.order_item_id) AS number_order
+FROM orders
+     INNER JOIN order_items ON orders.order_id = order_items.order_id
+     WHERE DATEDIFF(orders.order_estimated_delivery_date,orders.order_delivered_customer_date) < 0
+     GROUP BY delivered_year, delivered_month
+     ORDER BY delivered_year, delivered_month;
+
+
+-- 5. FIND THE TOP 3 CUSTOMERS PER YEAR AND PER MONTH BASED ON TOTAL SPENDING.
+
+-- olist_orders_dataset table, named orders
+-- olist_order_items_dataset table, named order_items
+
+-- Top 3 customers per year
+WITH YearlySpending AS (
+    SELECT 
+        orders.customer_id AS customer_id,
+        YEAR(orders.order_purchase_timestamp) AS order_year,
+        SUM(order_items.price*order_items.order_item_id) AS total_spending
+    FROM orders
+    INNER JOIN order_items ON orders.order_id = order_items.order_id
+    GROUP BY customer_id, order_year
+),
+RankedSpending AS (
+    SELECT 
+        customer_id,
+        order_year,
+        total_spending,
+        ROW_NUMBER() OVER (PARTITION BY order_year ORDER BY total_spending DESC) AS ranking
+    FROM YearlySpending
+)
+SELECT 
+    customer_id,
+    order_year,
+    total_spending
+FROM RankedSpending
+WHERE ranking <= 3
+ORDER BY order_year, ranking ASC;
+
+-- Top 3 customers per month
+WITH MonthYearSpending AS (
+    SELECT 
+        orders.customer_id AS customer_id,
+        YEAR(orders.order_purchase_timestamp) AS order_year,
+        MONTH(orders.order_purchase_timestamp) AS order_month,
+        SUM(order_items.price*order_items.order_item_id) AS total_spending
+    FROM orders
+    INNER JOIN order_items ON orders.order_id = order_items.order_id
+    GROUP BY customer_id, order_year, order_month
+),
+RankedSpending AS (
+    SELECT 
+        customer_id,
+        order_year,
+        order_month,
+        total_spending,
+        ROW_NUMBER() OVER (PARTITION BY order_year, order_month ORDER BY total_spending DESC) AS ranking
+    FROM MonthYearSpending
+)
+SELECT 
+    customer_id,
+    order_year,
+    order_month,
+    total_spending
+FROM RankedSpending
+WHERE ranking <= 3
+ORDER BY order_year, order_month, ranking ASC;
